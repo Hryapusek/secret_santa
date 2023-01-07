@@ -10,3 +10,7 @@ diesel = { version = "2.0.0", features = ["postgres"] }
 dotenv = "0.15"
 diesel-derive-enum = { version = "2.0.0-rc.0", features = ["postgres"] }
 rand = "0.8.5"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "*"
+tide = "*"
+futures = "*"
