@@ -1,6 +1,13 @@
+use crate::schema::group_user;
+use crate::schema::groups;
+
 use super::database_connection::Database;
+
+use crate::models::group::*;
+use crate::models::group_user::*;
 use crate::models::user::*;
 
+use crate::service::group_service::GroupService;
 use diesel::prelude::*;
 
 pub struct UserService {
@@ -48,5 +55,76 @@ impl UserService {
             Err(..) => None,
         }
     }
+    pub fn create_group(&mut self, caller_name: &String, group_name: &String) -> Result<Group, ()> {
+        if !Self::is_user_in_database(&caller_name) {
+            return Err(());
+        }
+        match GroupService::new().get_group_by_name(group_name) {
+            None => {}
+            Some(..) => {
+                println!("Group with this name already exists!");
+                return Err(());
+            }
+        }
+        let caller = self.get_user_by_name(caller_name).unwrap();
+        let new_group = NewGroup::new(String::clone(&group_name));
+        let group = diesel::insert_into(groups::table)
+            .values(&new_group)
+            .get_result::<Group>(&mut self.conn);
+        let group = group.unwrap();
+        println!(
+            "Created group with id: {}, name: {}, status: {}",
+            group.id, group.name, group.status
+        );
+        Self::set_first_admin(&caller, &group, &mut self.conn);
+        Ok(group)
+    }
+    fn set_first_admin(user: &User, group: &Group, conn: &mut PgConnection) {
+        Self::create_group_user_link(group, user, UserRole::Admin, conn);
+    }
+    fn create_group_user_link(
+        group: &Group,
+        new_member: &User,
+        role: UserRole,
+        conn: &mut PgConnection,
+    ) -> Result<(), ()> {
+        let new_group_user = NewGroupUser::new(group.id, new_member.id, role, None);
+        if Self::is_user_in_group(&new_member, &group, conn) {
+            println!("User {} is already in {}", new_member.name, group.name);
+            return Err(());
+        }
+        let group_user = diesel::insert_into(group_user::table)
+            .values(&new_group_user)
+            .get_result::<GroupUser>(conn);
+        let group_user = group_user.unwrap();
+        println!(
+            "Created group_user link: group: {}, user: {}, role: {}",
+            group.name, new_member.name, group_user.role
+        );
+        Ok(())
+    }
 
+    fn is_user_in_database(user_name: &String) -> bool {
+        match UserService::new().get_user_by_name(&user_name) {
+            None => {
+                println!("User with name {} was not found", user_name);
+                false
+            }
+            Some(..) => true,
+        }
+    }
+
+    fn is_user_in_group(user: &User, group: &Group, conn: &mut PgConnection) -> bool {
+        use crate::schema::group_user::dsl::*;
+        let user = group_user
+            .filter(BoolExpressionMethods::and(
+                ExpressionMethods::eq(group_id, group.id),
+                ExpressionMethods::eq(user_id, user.id),
+            ))
+            .first::<GroupUser>(conn);
+        match user {
+            Ok(..) => true,
+            Err(..) => false,
+        }
+    }
 }
