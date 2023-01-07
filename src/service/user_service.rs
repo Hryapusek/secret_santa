@@ -103,7 +103,6 @@ impl UserService {
         );
         Ok(())
     }
-
     fn is_user_in_database(user_name: &String) -> bool {
         match UserService::new().get_user_by_name(&user_name) {
             None => {
@@ -113,7 +112,6 @@ impl UserService {
             Some(..) => true,
         }
     }
-
     fn is_user_in_group(user: &User, group: &Group, conn: &mut PgConnection) -> bool {
         use crate::schema::group_user::dsl::*;
         let user = group_user
@@ -127,4 +125,32 @@ impl UserService {
             Err(..) => false,
         }
     }
+    pub fn join_group(&mut self, caller_name: &String, group_name: &String) -> Result<(), ()> {
+        if !Self::is_user_in_database(&caller_name) {
+            return Err(());
+        }
+        let mut caller = self.get_user_by_name(caller_name).unwrap();
+        let mut group_service = GroupService::new();
+        let group = match group_service.get_group_by_name(&group_name) {
+            None => {
+                println!("Group with this name does not exist!");
+                return Err(());
+            }
+            Some(g) => g,
+        };
+        if group.status == GroupStatus::Closed {
+            println!("Group with name {} is closed", group.name);
+            return Err(());
+        }
+        Self::create_group_user_link(&group, &caller, UserRole::User, &mut self.conn);
+        Ok(())
+    }
+    fn is_group_in_database(group_name: &String) -> bool {
+        match GroupService::new().get_group_by_name(&group_name) {
+            None => false,
+            Some(..) => true,
+        }
+    }
+
+
 }
